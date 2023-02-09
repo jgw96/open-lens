@@ -270,7 +270,7 @@ export class AppCamera extends LitElement {
     }
 
     private hookUpStream(streamData: MediaStream) {
-        const video = this.shadowRoot?.querySelector('video') as HTMLVideoElement;
+        const video = this.shadowRoot?.querySelector('video') as any;
         this.video = video;
 
         if (streamData) {
@@ -313,7 +313,7 @@ export class AppCamera extends LitElement {
             }
 
             // request next frame
-            this.video.requestVideoFrameCallback(this.onFrame.bind(this));
+            (this.video as any).requestVideoFrameCallback(this.onFrame.bind(this));
         }
     }
 
