@@ -6,6 +6,7 @@ import '@shoelace-style/shoelace/dist/components/drawer/drawer.js';
 import '@shoelace-style/shoelace/dist/components/details/details.js';
 import { getTextData, initText } from '../services/text';
 import { analyzeImage } from '../services/analysis';
+import { chooseFileToAnalyze } from '../services/handle-files';
 
 @customElement('app-camera')
 export class AppCamera extends LitElement {
@@ -23,6 +24,7 @@ export class AppCamera extends LitElement {
 
     video: HTMLVideoElement | null = null;
     canvas: HTMLCanvasElement | null = null;
+    ctx: CanvasRenderingContext2D | null = null;
     model: any | undefined;
     currentResult: any | undefined;
 
@@ -117,9 +119,6 @@ export class AppCamera extends LitElement {
 
             #choose-file {
                 z-index: 1;
-                position: absolute;
-                right: 10px;
-                top: 10px;
             }
 
             #info-block {
@@ -194,6 +193,7 @@ export class AppCamera extends LitElement {
                 justify-content: center;
                 height: 62vh;
                 align-items: center;
+                gap: 8px;
             }
 
             #other-options {
@@ -249,7 +249,7 @@ export class AppCamera extends LitElement {
     ];
 
     async firstUpdated() {
-        await this.init();
+        // await this.init();
     }
 
     async init() {
@@ -267,6 +267,34 @@ export class AppCamera extends LitElement {
 
         const canvas = this.shadowRoot?.querySelector('canvas') as HTMLCanvasElement;
         this.canvas = canvas;
+    }
+
+    async chooseFile() {
+        const blob = await chooseFileToAnalyze();
+        const file = await blob.handle?.getFile();
+        if (file) {
+            // const data = await analyzeImage(blob);
+            // console.log('choose file', data);
+
+            if (!this.model) {
+                // @ts-ignore
+                this.model = await cocoSsd.load();
+            }
+
+            const image = new Image();
+            image.src = URL.createObjectURL(file);
+
+            image.onload = async () => {
+                const results = await this.model.detect(image);
+                console.log('choose file', results);
+
+                this.currentResult = results[0];
+
+                await this.updateComplete;
+
+                await this.getInfo();
+            }
+        }
     }
 
     private hookUpStream(streamData: MediaStream) {
@@ -289,22 +317,25 @@ export class AppCamera extends LitElement {
 
     async onFrame() {
         if (this.canvas && this.video) {
-            const ctx = this.canvas.getContext('2d');
-            if (ctx) {
-                ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+            if (!this.ctx) {
+              this.ctx = this.canvas.getContext('2d');
+            }
+
+            if (this.ctx) {
+              this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
             }
 
             const results = await this.model.detect(this.canvas);
             if (results) {
                 if (results[0] && results[0].bbox) {
-                    ctx!.beginPath();
+                    this.ctx!.beginPath();
                     // @ts-ignore
-                    ctx!.rect(...results[0].bbox);
-                    ctx!.lineWidth = 1;
-                    ctx!.strokeStyle = 'white';
-                    ctx!.fillStyle = 'white';
-                    ctx!.stroke();
-                    ctx!.fillText(
+                    this.ctx!.rect(...results[0].bbox);
+                    this.ctx!.lineWidth = 1;
+                    this.ctx!.strokeStyle = 'white';
+                    this.ctx!.fillStyle = 'white';
+                    this.ctx!.stroke();
+                    this.ctx!.fillText(
                         results[0].class, results[0].bbox[0],
                         results[0].bbox[1] > 10 ? results[0].bbox[1] - 5 : 10);
 
@@ -323,11 +354,12 @@ export class AppCamera extends LitElement {
             console.log('blob', blob);
 
             // draw blob to canvas
-            this.getInfo();
+            await this.getInfo();
         }
     }
 
     private async getInfo() {
+        console.log("this.currentResult", this.currentResult.class)
 
         await this.bingSearch(this.currentResult.class);
         //             this.predictions = predictions;
@@ -344,15 +376,18 @@ export class AppCamera extends LitElement {
         const data = await response.json();
         console.log('data', data);
 
-        this.found = data.entities.value[0];
+        this.found = data.entities ? data.entities.value[0] : data.queryContext.originalQuery;
+        console.log('this.found', this.found);
 
         const drawer: any = this.shadowRoot?.querySelector("#info-drawer");
         if (drawer) {
             await drawer.show();
         }
 
+        const found = this.found.name ? this.found.name : this.found;
+
         // find extra info from bing search api
-        const response2 = await fetch(`https://api.bing.microsoft.com/v7.0/search?q=${this.found?.name}`, {
+        const response2 = await fetch(`https://api.bing.microsoft.com/v7.0/search?q=${found}`, {
             method: "GET",
             headers: {
                 'Ocp-Apim-Subscription-Key': '3da565390ffd497ea2b0fd8ccae88863'
@@ -434,12 +469,6 @@ export class AppCamera extends LitElement {
 
     render() {
         return html`
-        <sl-button id="choose-file" size="small" pill>
-            Choose File
-
-            <sl-icon slot="suffix" src="/assets/image-outline.svg"></sl-icon>
-        </sl-button>
-
         <video></video>
         <canvas></canvas>
 
@@ -447,9 +476,13 @@ export class AppCamera extends LitElement {
             !this.stream ? html`
               <div id="start">
                 <sl-button variant="primary" pill @click=${this.init}>
-                    Start Camera
+                  Start Camera
+                  <sl-icon slot="suffix" src="/assets/camera-outline.svg"></sl-icon>
+                </sl-button>
 
-                    <sl-icon slot="suffix" src="/assets/camera-outline.svg"></sl-icon>
+                <sl-button id="choose-file" pill @click=${this.chooseFile}>
+                  Choose File
+                  <sl-icon slot="suffix" src="/assets/image-outline.svg"></sl-icon>
                 </sl-button>
               </div>
 
@@ -470,9 +503,9 @@ export class AppCamera extends LitElement {
             <div id="image-block">
                 ${this.found && this.found.image ? html`<img src="${this.found?.image?.thumbnailUrl}"
                     alt="${this.found?.name}" />` : null}
-                <h2>${this.found?.name || "Nothing"}</h2>
+                <h2>${this.found?.name ? this.found.name : this.found}</h2>
             </div>
-            <p>${this.found?.description || "Nothing"}</p>
+            <p>${this.found?.description || ""}</p>
 
             <div id="more">
                 <h3>Bing Results</h3>

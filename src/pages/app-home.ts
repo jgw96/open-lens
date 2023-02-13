@@ -1,9 +1,6 @@
 import { LitElement, css, html } from 'lit';
 import { property, customElement } from 'lit/decorators.js';
 
-// For more info on the @pwabuilder/pwainstall component click here https://github.com/pwa-builder/pwa-install
-import '@pwabuilder/pwainstall';
-
 import '@shoelace-style/shoelace/dist/components/card/card.js';
 import '@shoelace-style/shoelace/dist/components/button/button.js';
 
@@ -91,8 +88,6 @@ export class AppHome extends LitElement {
     return html`
       <main>
         <app-camera></app-camera>
-
-        <pwa-install>Install PWA Starter</pwa-install>
       </main>
     `;
   }
